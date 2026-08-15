@@ -921,7 +921,7 @@ function renderProdDetail(p){
     '</div>'+
     '<div class="card"><h3>Étape dates</h3>'+
       '<div class="kv"><div class="k">Date début construction</div><div>'+(fmtDate(p.startDate)||'—')+'</div></div>'+
-      '<div class="kv"><div class="k">Date fin construction</div><div>'+(fmtDate(p.endDate)||'—')+'</div></div>'+
+      '<div class="kv"><div class="k">Date fin construction prévue</div><div>'+(fmtDate(p.endDate)||'—')+'</div></div>'+
       '<div class="kv"><div class="k">Date livraison</div><div>'+(fmtDate(p.deliveryDate)||'—')+'</div></div>'+
       renderGantt(p)+
     '</div>'+
@@ -985,7 +985,7 @@ function renderProdEdit(p){
     '</div>'+
     '<div class="card"><h3>Étape dates</h3><div class="grid4">'+
       '<div class="field"><label>Date début construction</label><input type="date" data-f="startDate" value="'+p.startDate+'"></div>'+
-      '<div class="field"><label>Date fin construction</label><input type="date" data-f="endDate" value="'+p.endDate+'"></div>'+
+      '<div class="field"><label>Date fin construction prévue</label><input type="date" data-f="endDate" value="'+p.endDate+'"></div>'+
       '<div class="field"><label>Date livraison</label><input type="date" data-f="deliveryDate" value="'+p.deliveryDate+'"></div>'+
     '</div></div>'+
     '<div class="card"><h3>Statut</h3><div class="field" style="max-width:260px;">'+
