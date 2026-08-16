@@ -342,7 +342,7 @@
 
 <script>
 // ===== Firebase =====
-import { initializeApp } from "firebase/app";
+
 // Config du projet Firebase "marine-composite" (Console Firebase > Paramètres du projet > Config SDK)
 const firebaseConfig = {
   apiKey: "AIzaSyC5OVJwfcW8e7cyNdT2m084GLD_oCxzK5Q",
@@ -352,7 +352,6 @@ const firebaseConfig = {
   messagingSenderId: "1014319573274",
   appId: "1:1014319573274:web:12816e650584a757ce64a3"
 };
-const app = initializeApp(firebaseConfig);
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
