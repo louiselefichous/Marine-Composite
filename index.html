@@ -343,27 +343,17 @@
 <script>
 // ===== Firebase =====
 // Config du projet Firebase "marine-composite" (Console Firebase > Paramètres du projet > Config SDK)
-<script type="module">
-  // Importation via le CDN officiel de Firebase
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { initializeFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyC5OVJwfcW8e7cyNdT2m084GLD_oCxzK5Q",
-    authDomain: "vrai-marine-composite.firebaseapp.com",
-    projectId: "vrai-marine-composite",
-    storageBucket: "vrai-marine-composite.firebasestorage.app",
-    messagingSenderId: "1014319573274",
-    appId: "1:1014319573274:web:12816e650584a757ce64a3"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = initializeFirestore(app, {
-    experimentalForceLongPolling: true // Votre option pour Safari
-  });
-</script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC2HnVb3iF80BwKO_fy9BZs7oblTS5Lh2g",
+  authDomain: "marine-composite.firebaseapp.com",
+  projectId: "marine-composite",
+  storageBucket: "marine-composite.firebasestorage.app",
+  messagingSenderId: "994981613328",
+  appId: "1:994981613328:web:d4972bfc3405fc0767df95"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
 // Safari bloque parfois silencieusement la connexion "streaming" par défaut de
 // Firestore (aucune erreur visible, l'écriture reste juste "en attente" pour
 // toujours). Le "long polling" est une méthode de connexion plus lente mais
