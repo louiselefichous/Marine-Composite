@@ -356,12 +356,12 @@ const SAVE_DELAY_MS = 800;
 // ===== Firebase =====
 // Config du projet Firebase "marine-composite" (Console Firebase > Paramètres du projet > Config SDK)
 const firebaseConfig = {
-  apiKey: "AIzaSyC5OVJwfcW8e7cyNdT2m084GLD_oCxzK5Q",
-  authDomain: "vrai-marine-composite.firebaseapp.com",
-  projectId: "vrai-marine-composite",
-  storageBucket: "vrai-marine-composite.firebasestorage.app",
-  messagingSenderId: "1014319573274",
-  appId: "1:1014319573274:web:12816e650584a757ce64a3"
+  apiKey: "AIzaSyC2HnVb3iF80BwKO_fy9BZs7oblTS5Lh2g",
+  authDomain: "marine-composite.firebaseapp.com",
+  projectId: "marine-composite",
+  storageBucket: "marine-composite.firebasestorage.app",
+  messagingSenderId: "994981613328",
+  appId: "1:994981613328:web:d4972bfc3405fc0767df95"
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
@@ -759,11 +759,18 @@ function writeCollection(name, arr, onError){
 }
 function debounce(fn, delay, state){
   let t;
-  return function(){
+  const debounced = function(){
     state.pending = true; // dit aux listeners onSnapshot de ne pas nous marcher dessus
     clearTimeout(t);
     t = setTimeout(function(){ fn().then(function(){ state.pending = false; }); }, delay);
   };
+  // Écrit tout de suite, sans attendre le délai — utilisé quand on quitte un champ.
+  debounced.flush = function(){
+    clearTimeout(t);
+    state.pending = true;
+    fn().then(function(){ state.pending = false; });
+  };
+  return debounced;
 }
 const saveBoatsNow = function(){ return writeCollection('boats', boats, "Erreur d'enregistrement (bateaux)"); };
 const saveProdNow = function(){ return writeCollection('prodJobs', prodJobs, "Erreur d'enregistrement (prod)"); };
@@ -778,14 +785,29 @@ const saveBoatsDebounced = debounce(saveBoatsNow, SAVE_DELAY_MS, boatsSaveState)
 const saveProdDebounced = debounce(saveProdNow, SAVE_DELAY_MS, prodSaveState);
 const saveStaffDebounced = debounce(saveStaffNow, SAVE_DELAY_MS, staffSaveState);
 const saveAgendaDebounced = debounce(saveAgendaNow, SAVE_DELAY_MS, agendaSaveState);
-// saveX() (utilisé partout ailleurs dans le code) attend une pause dans la frappe.
-// saveXNow() écrit immédiatement — utilisé uniquement à la création d'une nouvelle
-// fiche, pour éviter qu'une mise à jour reçue entre-temps l'efface avant qu'elle
-// ait eu la moindre chance d'être enregistrée.
+// saveX() (utilisé partout ailleurs dans le code) attend une pause dans la frappe —
+// c'est un filet de sécurité si jamais le champ n'est jamais quitté proprement.
+// saveXFlush() enregistre immédiatement — appelé quand on quitte un champ (blur).
+// saveXNow() écrit immédiatement sans passer par le mécanisme de délai — utilisé
+// uniquement à la création d'une nouvelle fiche, pour éviter qu'une mise à jour
+// reçue entre-temps l'efface avant qu'elle ait eu la moindre chance d'être enregistrée.
 function saveBoats(){ saveBoatsDebounced(); }
 function saveProd(){ saveProdDebounced(); }
 function saveStaff(){ saveStaffDebounced(); }
 function saveAgenda(){ saveAgendaDebounced(); }
+function saveBoatsFlush(){ saveBoatsDebounced.flush(); }
+function saveProdFlush(){ saveProdDebounced.flush(); }
+function saveStaffFlush(){ saveStaffDebounced.flush(); }
+function saveAgendaFlush(){ saveAgendaDebounced.flush(); }
+// Enregistre immédiatement dès qu'on quitte un champ texte/date/liste déroulante,
+// plutôt que d'attendre le délai — posé une seule fois par écran plutôt que sur
+// chaque champ individuellement (le blur ne remonte pas tout seul, d'où "true" à
+// la fin : on l'écoute en phase de capture).
+function attachSaveOnBlur(container, flushFn){
+  container.addEventListener('blur', function(e){
+    if(e.target && e.target.matches && e.target.matches('input,textarea,select')) flushFn();
+  }, true);
+}
 
 // À utiliser à la suppression d'une fiche, en plus de saveX() : saveX() n'écrit que
 // ce qui reste dans le tableau local, il ne supprime pas l'ancien document Firestore.
@@ -1265,6 +1287,7 @@ function renderBoatEdit(b){
   area.querySelectorAll('[data-cap-rm]').forEach(function(btn){ btn.addEventListener('click', function(){
     b.emailCaptures.splice(+btn.dataset.capRm, 1); saveBoats(); renderBoatEdit(b);
   }); });
+  attachSaveOnBlur(area, saveBoatsFlush);
 }
 
 function renderHivPlanning(){
@@ -1529,6 +1552,7 @@ function renderProdEdit(p){
   area.querySelectorAll('[data-qf-rm]').forEach(function(btn){ btn.addEventListener('click', function(){
     p.quoteFiles.splice(+btn.dataset.qfRm, 1); saveProd(); renderProdEdit(p);
   }); });
+  attachSaveOnBlur(area, saveProdFlush);
 }
 
 function getCurrentStaff(){ return staff.find(function(s){ return s.id===currentStaffId; }) || null; }
@@ -1583,6 +1607,7 @@ function renderStaffMain(){
     s.leaves.push({id:uid('lv'), startDate:'', endDate:'', reason:''});
     saveStaff(); renderStaffMain();
   });
+  attachSaveOnBlur(area, saveStaffFlush);
 }
 
 // Recense tous les événements datés (Hivernage + Prod + congés du personnel),
@@ -1720,6 +1745,7 @@ function renderPlanningDayByDay(){
   area.querySelectorAll('.day-note-input').forEach(function(ta){ ta.addEventListener('input', function(){
     setAgendaNote(ta.dataset.date, ta.value);
   }); });
+  attachSaveOnBlur(area, saveAgendaFlush);
 }
 
 // Menu mobile : la sidebar devient un tiroir (drawer) sous 900px, sans toucher
