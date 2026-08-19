@@ -26,7 +26,7 @@
   :root{
     --navy:#0B1526; --navy-dark:#060B15; --accent:#2E6F69; --bg:#F5F6F8; --card:#FFFFFF;
     --line:#D7D9DE; --text:#14161A; --muted:#52565E; --ok:#2E7D5C; --warn:#bd8c24; --blue:#3D6E93;
-    --on-navy:#F3F5F8; --on-navy-muted:#A9B4C4;
+    --on-navy:#F3F5F8; --on-navy-muted:#A9B4C4; --gris:#292936;
     --radius-sm:6px; --radius-md:10px; --radius-lg:14px;
     --shadow-sm:0 1px 2px rgba(15,15,20,.06);
     --shadow-md:0 2px 4px rgba(15,15,20,.06), 0 8px 20px -10px rgba(15,15,20,.14);
@@ -986,7 +986,7 @@ function renderMain(){
 
 function dashKpi(value, label){
   return '<div class="card" style="text-align:center;padding:22px 14px;">'+
-    '<div style="font-size:34px;font-weight:800;color:var(--accent);font-family:Manrope,sans-serif;line-height:1.1;">'+value+'</div>'+
+    '<div style="font-size:34px;font-weight:800;color:var(--gris);font-family:Manrope,sans-serif;line-height:1.1;">'+value+'</div>'+
     '<div style="font-size:12px;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:6px;">'+label+'</div>'+
   '</div>';
 }
