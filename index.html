@@ -380,6 +380,14 @@ const db = firebase.firestore();
 // beaucoup plus compatible, recommandée par Firebase pour ce cas précis.
 db.settings({ experimentalForceLongPolling: true });
 
+// ----- Liste blanche des emails autorisés à accéder à la plateforme -----
+// Ajoute ou retire des adresses ici (en minuscules, entre guillemets, séparées par une virgule).
+const ALLOWED_EMAILS = ['bzh7126@gmail.com', 'louise.lefichous@gmail.com'];
+function isEmailAllowed(email){
+  return ALLOWED_EMAILS.indexOf((email||'').trim().toLowerCase()) !== -1;
+}
+const NOT_ALLOWED_MSG = "Cette adresse email n'est pas autorisée à accéder à la plateforme.";
+
 // ----- Gate de connexion / inscription -----
 function showAuthView(view){
   document.getElementById('authViewLogin').style.display = view==='login' ? 'block' : 'none';
@@ -409,6 +417,7 @@ document.getElementById('goToLogin').addEventListener('click', function(){ showA
 document.getElementById('loginSubmit').addEventListener('click', function(){
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
+  if(!isEmailAllowed(email)){ showAuthError(NOT_ALLOWED_MSG); return; }
   auth.signInWithEmailAndPassword(email, password).catch(function(err){ showAuthError(friendlyAuthError(err)); });
 });
 
@@ -416,6 +425,7 @@ document.getElementById('signupSubmit').addEventListener('click', function(){
   const email = document.getElementById('signupEmail').value.trim();
   const password = document.getElementById('signupPassword').value;
   const password2 = document.getElementById('signupPassword2').value;
+  if(!isEmailAllowed(email)){ showAuthError(NOT_ALLOWED_MSG); return; }
   if(password !== password2){ showAuthError("Les deux mots de passe ne correspondent pas."); return; }
   auth.createUserWithEmailAndPassword(email, password)
     .then(function(cred){ return cred.user.sendEmailVerification(); })
@@ -442,6 +452,16 @@ let appStarted = false;
 auth.onAuthStateChanged(function(user){
   const gate = document.getElementById('authGate');
   const root = document.getElementById('appRoot');
+  // Filet de sécurité : même si un compte existe déjà (créé avant cette liste,
+  // ou via la console Firebase), on le déconnecte aussitôt s'il n'est pas autorisé.
+  if(user && !isEmailAllowed(user.email)){
+    gate.classList.remove('hidden');
+    root.style.display = 'none';
+    showAuthView('login');
+    showAuthError(NOT_ALLOWED_MSG);
+    auth.signOut();
+    return;
+  }
   if(user && user.emailVerified){
     gate.classList.add('hidden');
     root.style.display = 'flex';
