@@ -742,7 +742,7 @@ function loadAll(){
     boats = snap.docs.map(function(d){ return migrateBoat(d.data()); });
     boatsReady = true; checkFirstLoadDone();
     renderAll();
-  }, function(err){ console.error('[Firestore] Erreur listener "boats" :', err); alert('Erreur de synchronisation (bateaux) : '+err.message); });
+  }, function(err){ console.error('[Firestore] Erreur listener "boats" :', err); showSyncError('bateaux', err); });
 
   db.collection('prodJobs').onSnapshot({ includeMetadataChanges: true }, function(snap){
     console.log('[Firestore] Snapshot "prodJobs" reçu : '+snap.docs.length+' doc(s), hasPendingWrites='+snap.metadata.hasPendingWrites);
@@ -750,7 +750,7 @@ function loadAll(){
     prodJobs = snap.docs.map(function(d){ return migrateProdJob(d.data()); });
     prodReady = true; checkFirstLoadDone();
     renderAll();
-  }, function(err){ console.error('[Firestore] Erreur listener "prodJobs" :', err); alert('Erreur de synchronisation (prod) : '+err.message); });
+  }, function(err){ console.error('[Firestore] Erreur listener "prodJobs" :', err); showSyncError('prod', err); });
 
   db.collection('staff').onSnapshot({ includeMetadataChanges: true }, function(snap){
     console.log('[Firestore] Snapshot "staff" reçu : '+snap.docs.length+' doc(s), hasPendingWrites='+snap.metadata.hasPendingWrites);
@@ -758,14 +758,33 @@ function loadAll(){
     staff = snap.docs.map(function(d){ return migrateStaffMember(d.data()); });
     staffReady = true; checkFirstLoadDone();
     renderAll();
-  }, function(err){ console.error(err); alert('Erreur de synchronisation (personnel) : '+err.message); });
+  }, function(err){ console.error(err); showSyncError('personnel', err); });
 
   db.collection('agendaNotes').onSnapshot({ includeMetadataChanges: true }, function(snap){
     if(snap.metadata.hasPendingWrites || agendaSaveState.pending) return;
     agendaNotes = snap.docs.map(function(d){ return d.data(); });
     agendaReady = true; checkFirstLoadDone();
     renderAll();
-  }, function(err){ console.error('[Firestore] Erreur listener "agendaNotes" :', err); alert("Erreur de synchronisation (agenda) : "+err.message); });
+  }, function(err){ console.error('[Firestore] Erreur listener "agendaNotes" :', err); showSyncError('agenda', err); });
+}
+
+// Affiche une bannière d'erreur de synchro UNE SEULE fois par type (pas de alert()
+// bloquant qui reviendrait en boucle si Firestore refuse la lecture en continu,
+// ce qui arrive par exemple si les règles de sécurité ne sont pas encore bonnes).
+const syncErrorsShown = {};
+function showSyncError(what, err){
+  if(syncErrorsShown[what]) return;
+  syncErrorsShown[what] = true;
+  let banner = document.getElementById('syncErrorBanner');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'syncErrorBanner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:3000;background:#AE3B2E;color:#fff;padding:10px 16px;font-size:13px;font-family:Inter,sans-serif;text-align:center;';
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML = 'Erreur de synchronisation ('+what+') : '+esc(err.message)+' — vérifie tes règles Firestore et que tu es sur le bon projet.'+
+    ' <button id="syncErrorClose" style="margin-left:10px;background:#fff;color:#AE3B2E;border:none;border-radius:4px;padding:3px 10px;font-weight:700;cursor:pointer;">Fermer</button>';
+  document.getElementById('syncErrorClose').addEventListener('click', function(){ banner.remove(); });
 }
 
 // Écrit l'intégralité du tableau local dans Firestore (un document par fiche).
@@ -783,7 +802,7 @@ function writeCollection(name, arr, onError){
   console.log('[Firestore] Envoi de '+arr.length+' fiche(s) vers "'+name+'"...');
   return batch.commit()
     .then(function(){ console.log('[Firestore] ✓ Écriture confirmée sur "'+name+'"'); })
-    .catch(function(e){ console.error('[Firestore] ✗ ÉCHEC écriture sur "'+name+'" :', e); alert(onError+' : '+e.message); });
+    .catch(function(e){ console.error('[Firestore] ✗ ÉCHEC écriture sur "'+name+'" :', e); showSyncError(onError, e); });
 }
 function debounce(fn, delay, state){
   let t;
@@ -807,7 +826,7 @@ const saveStaffNow = function(){ return writeCollection('staff', staff, "Erreur 
 const saveAgendaNow = function(){
   const batch = db.batch();
   agendaNotes.forEach(function(n){ batch.set(db.collection('agendaNotes').doc(n.date), n); });
-  return batch.commit().catch(function(e){ console.error(e); alert("Erreur d'enregistrement (agenda) : "+e.message); });
+  return batch.commit().catch(function(e){ console.error(e); showSyncError("Erreur d'enregistrement (agenda)", e); });
 };
 const saveBoatsDebounced = debounce(saveBoatsNow, SAVE_DELAY_MS, boatsSaveState);
 const saveProdDebounced = debounce(saveProdNow, SAVE_DELAY_MS, prodSaveState);
