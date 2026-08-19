@@ -95,8 +95,8 @@
   .tab{padding:10px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s var(--ease),border-color .15s var(--ease);}
   .tab:hover{color:var(--text);}
   .tab.active{color:var(--text);border-bottom-color:var(--accent);}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-md);padding:26px 28px;margin-bottom:18px;}
-  .card h3{margin:0 0 18px 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:0 0 12px 0;border-bottom:1px solid var(--line);}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-md);padding:26px 28px;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+  .card h3{margin:0 0 18px 0;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text);padding:0 0 12px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;}
   .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px 18px;}
   .field label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;}
@@ -128,15 +128,20 @@
   .bullet-list li{padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
   .bullet-list li:before{content:"– ";color:var(--accent);font-weight:700;}
   table.fiche-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;}
-  table.fiche-table th{background:var(--bg);color:var(--muted);text-align:left;padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;border-bottom:1px solid var(--line);}
+  table.fiche-table th{background:#EDEEF1;color:var(--text);text-align:left;padding:9px 12px;font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;border-bottom:1px solid var(--line);}
   table.fiche-table td{padding:10px 12px;border-bottom:1px solid var(--line);}
   table.fiche-table tr:last-child td{border-bottom:none;}
   table.plan-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;}
-  table.plan-table th{background:var(--bg);color:var(--muted);text-align:left;padding:11px 14px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;border-bottom:1px solid var(--line);}
+  table.plan-table th{background:#EDEEF1;color:var(--text);text-align:left;padding:11px 14px;font-size:11px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;border-bottom:1px solid var(--line);}
   table.plan-table td{padding:11px 14px;border-bottom:1px solid var(--line);}
   table.plan-table tr:last-child td{border-bottom:none;}
   table.plan-table tr:hover td{background:var(--bg);}
   .chk{width:17px;height:17px;cursor:pointer;accent-color:var(--accent);}
+  /* Bandeau coloré à gauche de certaines cartes (accueil...) pour que l'œil sache
+     tout de suite où regarder en premier, sans avoir à lire chaque titre. */
+  .card-warn{border-left:4px solid var(--warn);}
+  .card-accent{border-left:4px solid var(--accent);}
+  .card-info{border-left:4px solid #B08A2E;}
   .status-tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;}
   .status-ok{background:#E6F1EC;color:var(--ok);}
   .status-pending{background:#F8EAE8;color:var(--warn);}
@@ -980,9 +985,9 @@ function renderMain(){
 }
 
 function dashKpi(value, label){
-  return '<div class="card" style="text-align:center;padding:20px 14px;">'+
-    '<div style="font-size:32px;font-weight:800;color:var(--navy);font-family:Manrope,sans-serif;">'+value+'</div>'+
-    '<div style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.3px;margin-top:4px;">'+label+'</div>'+
+  return '<div class="card" style="text-align:center;padding:22px 14px;">'+
+    '<div style="font-size:34px;font-weight:800;color:var(--accent);font-family:Manrope,sans-serif;line-height:1.1;">'+value+'</div>'+
+    '<div style="font-size:12px;color:var(--text);font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:6px;">'+label+'</div>'+
   '</div>';
 }
 
@@ -1058,14 +1063,14 @@ function renderDashboard(){
       dashKpi(prodAFaire, 'Dossiers Prod à faire')+
       dashKpi(totalStaff, 'Employés')+
     '</div>'+
-    '<div class="card"><h3>Travaux en retard '+(overdue.length?'<span class="status-tag status-pending">'+overdue.length+'</span>':'')+'</h3>'+
+    '<div class="card card-warn"><h3>Travaux en retard '+(overdue.length?'<span class="status-tag status-pending">'+overdue.length+'</span>':'')+'</h3>'+
       (overdue.length ? '<table class="fiche-table"><tr><th style="width:100px;">Module</th><th>Contexte</th><th>Travaux</th><th style="width:120px;">Échéance</th></tr>'+overdue.map(function(x){return '<tr><td><span class="type-tag '+(x.module==='Hivernage'?'type-tag-h':'')+'">'+x.module+'</span></td><td>'+esc(x.context)+'</td><td>'+esc(x.label)+'</td><td style="color:var(--warn);font-weight:700;">'+fmtDate(x.dueDate)+'</td></tr>';}).join('')+'</table>' : '<div class="placeholder-italic">Rien en retard — tout est à jour</div>')+
     '</div>'+
-    '<div class="card"><h3>Prochaines échéances</h3>'+
+    '<div class="card card-accent"><h3>Prochaines échéances</h3>'+
       '<div class="section-intro">Dans les 14 prochains jours</div>'+
       (upcoming.length ? '<table class="fiche-table"><tr><th style="width:100px;">Module</th><th>Contexte</th><th>Échéance</th><th style="width:120px;">Date</th></tr>'+upcoming.map(function(x){return '<tr><td><span class="type-tag '+(x.module==='Hivernage'?'type-tag-h':'')+'">'+x.module+'</span></td><td>'+esc(x.context)+'</td><td>'+esc(x.label)+'</td><td>'+fmtDate(x.date)+'</td></tr>';}).join('')+'</table>' : '<div class="placeholder-italic">Aucune échéance dans les 14 prochains jours</div>')+
     '</div>'+
-    '<div class="card"><h3>Congés à venir</h3>'+
+    '<div class="card card-info"><h3>Congés à venir</h3>'+
       '<div class="section-intro">Dans les 30 prochains jours (ou en cours)</div>'+
       (leaves.length ? '<table class="fiche-table"><tr><th>Employé</th><th style="width:120px;">Début</th><th style="width:120px;">Fin</th><th>Motif</th></tr>'+leaves.map(function(lv){return '<tr><td>'+esc(lv.name)+'</td><td>'+(fmtDate(lv.startDate)||'—')+'</td><td>'+(fmtDate(lv.endDate)||'—')+'</td><td>'+(esc(lv.reason)||'—')+'</td></tr>';}).join('')+'</table>' : '<div class="placeholder-italic">Aucun congé prévu</div>')+
     '</div>';
