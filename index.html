@@ -1508,11 +1508,11 @@ function renderProdEdit(p){
       '<div class="field"><label>Adresse postale</label><input type="text" data-f="clientAddress" value="'+esc(p.clientAddress)+'"></div>'+
     '</div></div>'+
     '<div class="card"><h3>Commande</h3><div class="grid2">'+
-      '<div class="field"><label>Titre du dossier</label><input type="text" data-f="title" value="'+esc(p.title)+'" placeholder="Ex : Commande M. Dupont - Day boat 6m"></div>'+
+      '<div class="field"><label>Titre du dossier</label><input type="text" data-f="title" value="'+esc(p.title)+'" placeholder="Ex : Commande M. Dupont - Bihan 6.50"></div>'+
       '<div class="field"><label>Type de dossier</label>'+
         '<select data-f="type"><option value="fabrication" '+(p.type==='fabrication'?'selected':'')+'>Fabrication (bateau / pièce neuve)</option><option value="chantier" '+(p.type==='chantier'?'selected':'')+'>Chantier (réparation)</option></select>'+
       '</div>'+
-      '<div class="field"><label>Type de bateau</label><input type="text" data-f="boatTypeWanted" value="'+esc(p.boatTypeWanted)+'" placeholder="Ex : semi-rigide 6m"></div>'+
+      '<div class="field"><label>Type de bateau</label><input type="text" data-f="boatTypeWanted" value="'+esc(p.boatTypeWanted)+'" placeholder="Ex : Bihan 6.50"></div>'+
     '</div>'+
     '<div class="field" style="margin-top:12px;"><label>Description</label><textarea data-f="description">'+esc(p.description)+'</textarea></div>'+
     '</div>'+
