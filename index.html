@@ -844,10 +844,30 @@ function loadAll(){
 
   db.collection('dailyLogs').onSnapshot({ includeMetadataChanges: true }, function(snap){
     if(snap.metadata.hasPendingWrites) return;
-    dailyLogs = snap.docs.map(function(d){ return d.data(); });
+    dailyLogs = snap.docs.map(function(d){ const data = d.data(); data._docId = d.id; return data; });
     dailyLogsReady = true; checkFirstLoadDone();
+    dedupeDailyLogs();
     renderAll();
   }, function(err){ console.error('[Firestore] Erreur listener "dailyLogs" :', err); showSyncError('journal quotidien', err); });
+}
+
+// Nettoie les doublons laissés par d'anciens envois (avant que chaque résumé soit
+// identifié par employé+date) : ne garde que le plus récent par employé et par jour.
+// Les employés ne peuvent pas supprimer eux-mêmes (règles de sécurité), donc ce
+// ménage se fait uniquement depuis la plateforme de suivi.
+function dedupeDailyLogs(){
+  const groups = {};
+  dailyLogs.forEach(function(l){
+    if(!l.staffEmail || !l.date) return;
+    const key = l.staffEmail.toLowerCase()+'|'+l.date;
+    (groups[key] = groups[key]||[]).push(l);
+  });
+  Object.keys(groups).forEach(function(key){
+    const list = groups[key];
+    if(list.length<=1) return;
+    list.sort(function(a,c){ return (c.submittedAt||'').localeCompare(a.submittedAt||''); });
+    for(let i=1;i<list.length;i++){ deleteDoc('dailyLogs', list[i]._docId); }
+  });
 }
 
 // Reconstruit la collection "tasks" à partir des travaux Hivernage + Prod actuels
