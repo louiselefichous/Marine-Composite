@@ -1048,7 +1048,8 @@ function syncHeaderUI(){
     subbar.style.display='flex';
     subbar.innerHTML =
       '<button class="subtab '+(personnelSubTab==='employes'?'active':'')+'" data-sub="employes">Employés</button>'+
-      '<button class="subtab '+(personnelSubTab==='vehicules'?'active':'')+'" data-sub="vehicules">Véhicules</button>';
+      '<button class="subtab '+(personnelSubTab==='vehicules'?'active':'')+'" data-sub="vehicules">Véhicules</button>'+
+      '<button class="subtab '+(personnelSubTab==='emploidutemps'?'active':'')+'" data-sub="emploidutemps">Emploi du temps</button>';
     subbar.querySelectorAll('.subtab').forEach(function(t){ t.addEventListener('click', function(){ personnelSubTab=t.dataset.sub; currentVehicleId=null; syncHeaderUI(); renderAll(); }); });
   } else {
     subbar.style.display='none';
@@ -1137,7 +1138,9 @@ function renderMain(){
   } else if(activeModule==='prod'){
     renderProdMain();
   } else if(activeModule==='personnel'){
-    if(personnelSubTab==='vehicules') renderVehicleMain(); else renderStaffMain();
+    if(personnelSubTab==='vehicules') renderVehicleMain();
+    else if(personnelSubTab==='emploidutemps') renderScheduleMain();
+    else renderStaffMain();
   } else if(activeModule==='clientsIndex'){
     renderClientMain();
   } else {
@@ -1856,6 +1859,29 @@ function renderVehicleMain(){
     vehicles.push(emptyVehicle()); saveVehiclesNow(); renderVehicleMain();
   });
   attachSaveOnBlur(main, saveVehiclesFlush);
+}
+
+let scheduleSearchQuery = '';
+function renderScheduleMain(){
+  const main = document.getElementById('main');
+  const q = scheduleSearchQuery.toLowerCase();
+  const logs = dailyLogs
+    .filter(function(l){ return (l.staffName||'').toLowerCase().indexOf(q)>-1; })
+    .sort(function(a,c){ return (c.date||'').localeCompare(a.date||'') || (a.staffName||'').localeCompare(c.staffName||''); });
+  main.innerHTML =
+    '<div class="card">'+
+      '<h3>Emploi du temps — équipe</h3>'+
+      '<div class="section-intro">Rempli automatiquement par chaque employé depuis la plateforme de pointage (horaires, véhicule pris, missions accomplies). Lecture seule ici.</div>'+
+      '<div class="field" style="max-width:300px;margin-bottom:16px;"><input type="text" id="scheduleSearch" placeholder="Filtrer par employé..." value="'+esc(scheduleSearchQuery)+'"></div>'+
+      (logs.length ? '<table class="fiche-table"><tr><th style="width:100px;">Date</th><th style="width:140px;">Employé</th><th style="width:120px;">Horaires</th><th style="width:130px;">Véhicule</th><th>Missions accomplies</th></tr>'+
+        logs.map(function(l){ return '<tr><td>'+(fmtDate(l.date)||'—')+'</td><td>'+esc(l.staffName||'—')+'</td><td>'+(esc(l.hourStart)||'—')+(l.hourEnd?' – '+esc(l.hourEnd):'')+'</td><td>'+(esc(l.vehicle)||'—')+'</td><td>'+(esc(l.tasksSummary)||'—')+(l.notes?'<div class="section-intro" style="margin:2px 0 0;">'+esc(l.notes)+'</div>':'')+'</td></tr>'; }).join('')+
+      '</table>' : '<div class="placeholder-italic">Aucune entrée pour le moment — les employés doivent d\'abord se connecter à la plateforme de pointage et envoyer un résumé.</div>')+
+    '</div>';
+  const search = document.getElementById('scheduleSearch');
+  search.addEventListener('input', function(){
+    scheduleSearchQuery = search.value; renderScheduleMain();
+    const el = document.getElementById('scheduleSearch'); el.focus(); el.setSelectionRange(scheduleSearchQuery.length, scheduleSearchQuery.length);
+  });
 }
 
 let clientSearchQuery = '';
