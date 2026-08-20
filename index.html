@@ -505,6 +505,8 @@ let currentBoatId = null;
 let currentProdId = null;
 let currentStaffId = null;
 let currentClientKey = null;
+let personnelSubTab = 'employes';
+let currentVehicleId = null;
 let currentTab = 'interne';
 let planningSubView = 'liste';
 let dayViewCursor = new Date(); dayViewCursor.setDate(1); dayViewCursor.setHours(0,0,0,0);
@@ -544,12 +546,12 @@ function getCurrentClient(){
 // Combine les demandes client + les points relevés par nos soins en une seule liste de travaux à réaliser
 function combinedWork(b){
   const items = [];
-  (b.requests||[]).forEach(function(r, idx){ if((r.text||'').trim()) items.push({ src:'request', idx: idx, label: r.text, done: !!r.done, dueDate: r.dueDate||'', assignedTo: r.assignedTo||'' }); });
+  (b.requests||[]).forEach(function(r, idx){ if((r.text||'').trim()) items.push({ src:'request', idx: idx, itemId: r.id, label: r.text, done: !!r.done, dueDate: r.dueDate||'', assignedTo: r.assignedTo||'' }); });
   (b.techNotes||[]).forEach(function(n, idx){
     if(!(n.constat||'').trim() && !(n.action||'').trim()) return;
     let label = n.constat || '';
     if(n.action) label += ' — ' + n.action;
-    items.push({ src:'technote', idx: idx, label: label, done: !!n.done, dueDate: n.dueDate||'', assignedTo: n.assignedTo||'' });
+    items.push({ src:'technote', idx: idx, itemId: n.id, label: label, done: !!n.done, dueDate: n.dueDate||'', assignedTo: n.assignedTo||'' });
   });
   return items;
 }
@@ -620,6 +622,9 @@ function emptyProd(){
 }
 function emptyStaff(){
   return { id: uid('st'), name:'', role:'', phone:'', email:'', notes:'', leaves: [] };
+}
+function emptyVehicle(){
+  return { id: uid('veh'), name:'', plate:'', notes:'' };
 }
 // Construit les <option> d'une liste déroulante "Qui" à partir du personnel enregistré.
 // Garde la valeur actuelle même si elle ne correspond à personne (texte libre historique).
@@ -739,7 +744,7 @@ function migrateBoat(b){
   b.requests = b.requests.map(function(r){ return (typeof r === 'string') ? {id:uid('req'), text:r, done:false} : r; });
   b.requests.forEach(function(r){ if(r.dueDate===undefined) r.dueDate=''; if(r.assignedTo===undefined) r.assignedTo=''; });
   if(!Array.isArray(b.techNotes)) b.techNotes = [];
-  b.techNotes.forEach(function(n){ if(n.done===undefined) n.done=false; if(n.dueDate===undefined) n.dueDate=''; if(n.assignedTo===undefined) n.assignedTo=''; });
+  b.techNotes.forEach(function(n){ if(n.done===undefined) n.done=false; if(n.dueDate===undefined) n.dueDate=''; if(n.assignedTo===undefined) n.assignedTo=''; if(!n.id) n.id=uid('tn'); });
   return b;
 }
 function migrateProdJob(p){
@@ -750,7 +755,7 @@ function migrateProdJob(p){
   if(p.clientAddress===undefined) p.clientAddress='';
   if(p.optionsNotes===undefined) p.optionsNotes='';
   if(!Array.isArray(p.tasks)) p.tasks=[];
-  p.tasks.forEach(function(t){ if(t.dueDate===undefined) t.dueDate=''; if(t.assignedTo===undefined) t.assignedTo=''; });
+  p.tasks.forEach(function(t){ if(t.dueDate===undefined) t.dueDate=''; if(t.assignedTo===undefined) t.assignedTo=''; if(!t.id) t.id=uid('pt'); });
   return p;
 }
 function migrateStaffMember(s){
@@ -763,9 +768,9 @@ function migrateStaffMember(s){
 // ----- Stockage Firestore -----
 // Chaque collection est écoutée en temps réel (onSnapshot) : dès qu'un ordinateur
 // modifie une donnée, tous les autres la voient apparaître automatiquement.
-let boatsReady=false, prodReady=false, staffReady=false, agendaReady=false, localImportChecked=false;
+let boatsReady=false, prodReady=false, staffReady=false, agendaReady=false, tasksReady=false, vehiclesReady=false, dailyLogsReady=false, localImportChecked=false;
 function checkFirstLoadDone(){
-  if(boatsReady && prodReady && staffReady && agendaReady && !localImportChecked){
+  if(boatsReady && prodReady && staffReady && agendaReady && tasksReady && vehiclesReady && dailyLogsReady && !localImportChecked){
     localImportChecked = true;
     offerLocalImportIfAny();
   }
@@ -775,7 +780,12 @@ const boatsSaveState = { pending:false };
 const prodSaveState = { pending:false };
 const staffSaveState = { pending:false };
 const agendaSaveState = { pending:false };
+const vehiclesSaveState = { pending:false };
+const tasksSaveState = { pending:false };
 let agendaNotes = []; // [{date:'YYYY-MM-DD', text:''}] — agenda central partagé par toute l'équipe
+let tasksMirror = []; // miroir public des travaux (Hivernage + Prod), lu par la plateforme 2 (employés)
+let vehicles = []; // parc de véhicules de société, choisi par les employés sur la plateforme 2
+let dailyLogs = []; // journaux quotidiens envoyés par les employés depuis la plateforme 2 (lecture seule ici)
 
 function loadAll(){
   // { includeMetadataChanges: true } nous permet de distinguer l'écho de notre
@@ -814,6 +824,88 @@ function loadAll(){
     agendaReady = true; checkFirstLoadDone();
     renderAll();
   }, function(err){ console.error('[Firestore] Erreur listener "agendaNotes" :', err); showSyncError('agenda', err); });
+
+  // "tasks" : miroir public des travaux, sans infos client — la plateforme 2 (employés)
+  // le lit pour afficher "mes tâches" et peut cocher "fait" dessus. On récupère ici les
+  // cases cochées côté employé pour les répercuter sur les vraies fiches (voir reconcileTasksDone).
+  db.collection('tasks').onSnapshot({ includeMetadataChanges: true }, function(snap){
+    if(snap.metadata.hasPendingWrites || tasksSaveState.pending) return;
+    tasksMirror = snap.docs.map(function(d){ return d.data(); });
+    tasksReady = true; checkFirstLoadDone();
+    reconcileTasksDone();
+  }, function(err){ console.error('[Firestore] Erreur listener "tasks" :', err); showSyncError('tâches', err); });
+
+  db.collection('vehicles').onSnapshot({ includeMetadataChanges: true }, function(snap){
+    if(snap.metadata.hasPendingWrites || vehiclesSaveState.pending) return;
+    vehicles = snap.docs.map(function(d){ return d.data(); });
+    vehiclesReady = true; checkFirstLoadDone();
+    renderAll();
+  }, function(err){ console.error('[Firestore] Erreur listener "vehicles" :', err); showSyncError('véhicules', err); });
+
+  db.collection('dailyLogs').onSnapshot({ includeMetadataChanges: true }, function(snap){
+    if(snap.metadata.hasPendingWrites) return;
+    dailyLogs = snap.docs.map(function(d){ return d.data(); });
+    dailyLogsReady = true; checkFirstLoadDone();
+    renderAll();
+  }, function(err){ console.error('[Firestore] Erreur listener "dailyLogs" :', err); showSyncError('journal quotidien', err); });
+}
+
+// Reconstruit la collection "tasks" à partir des travaux Hivernage + Prod actuels
+// (sans aucune info client) — appelée après chaque sauvegarde bateaux/prod réussie.
+function taskDocId(module, refId, itemId){ return module+'_'+refId+'_'+itemId; }
+function buildTaskDocs(){
+  const docs = [];
+  boats.forEach(function(b){
+    combinedWork(b).forEach(function(x){
+      if(!x.itemId) return;
+      docs.push({
+        id: taskDocId('hivernage', b.id, x.itemId), module:'hivernage', refId:b.id, itemId:x.itemId,
+        label:x.label, context:(b.boatName||'Bateau'),
+        dueDate:x.dueDate||'', assignedTo:x.assignedTo||'', done:!!x.done
+      });
+    });
+  });
+  prodJobs.forEach(function(p){
+    (p.tasks||[]).forEach(function(t){
+      if(!t.id || !(t.task||'').trim()) return;
+      docs.push({
+        id: taskDocId('prod', p.id, t.id), module:'prod', refId:p.id, itemId:t.id,
+        label:t.task, context:(p.title||'Dossier'),
+        dueDate:t.dueDate||'', assignedTo:t.assignedTo||'', done:!!t.done
+      });
+    });
+  });
+  return docs;
+}
+function syncTasksMirror(){
+  const docs = buildTaskDocs();
+  const batch = db.batch();
+  const currentIds = {};
+  docs.forEach(function(d){ currentIds[d.id]=true; batch.set(db.collection('tasks').doc(d.id), d); });
+  tasksMirror.forEach(function(old){ if(!currentIds[old.id]) batch.delete(db.collection('tasks').doc(old.id)); });
+  tasksSaveState.pending = true;
+  batch.commit().then(function(){ tasksSaveState.pending = false; }).catch(function(e){ console.error(e); tasksSaveState.pending = false; showSyncError('tâches', e); });
+}
+// Quand un employé coche "fait" côté plateforme 2, ça écrit dans "tasks" — on répercute
+// ici ce changement sur la vraie fiche bateau/dossier concernée, puis on l'enregistre.
+function reconcileTasksDone(){
+  let boatsChanged = false, prodChanged = false;
+  tasksMirror.forEach(function(t){
+    if(t.module==='hivernage'){
+      const b = boats.find(function(x){ return x.id===t.refId; });
+      if(!b) return;
+      const item = (b.requests||[]).find(function(r){ return r.id===t.itemId; }) || (b.techNotes||[]).find(function(n){ return n.id===t.itemId; });
+      if(item && !!item.done !== !!t.done){ item.done = !!t.done; boatsChanged = true; }
+    } else if(t.module==='prod'){
+      const p = prodJobs.find(function(x){ return x.id===t.refId; });
+      if(!p) return;
+      const item = (p.tasks||[]).find(function(x){ return x.id===t.itemId; });
+      if(item && !!item.done !== !!t.done){ item.done = !!t.done; prodChanged = true; }
+    }
+  });
+  if(boatsChanged) saveBoatsNow();
+  if(prodChanged) saveProdNow();
+  renderAll();
 }
 
 // Affiche une bannière d'erreur de synchro UNE SEULE fois par type (pas de alert()
@@ -867,9 +959,10 @@ function debounce(fn, delay, state){
   };
   return debounced;
 }
-const saveBoatsNow = function(){ return writeCollection('boats', boats, "Erreur d'enregistrement (bateaux)"); };
-const saveProdNow = function(){ return writeCollection('prodJobs', prodJobs, "Erreur d'enregistrement (prod)"); };
+const saveBoatsNow = function(){ return writeCollection('boats', boats, "Erreur d'enregistrement (bateaux)").then(function(){ if(tasksReady) syncTasksMirror(); }); };
+const saveProdNow = function(){ return writeCollection('prodJobs', prodJobs, "Erreur d'enregistrement (prod)").then(function(){ if(tasksReady) syncTasksMirror(); }); };
 const saveStaffNow = function(){ return writeCollection('staff', staff, "Erreur d'enregistrement (personnel)"); };
+const saveVehiclesNow = function(){ return writeCollection('vehicles', vehicles, "Erreur d'enregistrement (véhicules)"); };
 // L'agenda utilise la date (YYYY-MM-DD) comme identifiant de document, pas un id classique.
 const saveAgendaNow = function(){
   const batch = db.batch();
@@ -880,6 +973,7 @@ const saveBoatsDebounced = debounce(saveBoatsNow, SAVE_DELAY_MS, boatsSaveState)
 const saveProdDebounced = debounce(saveProdNow, SAVE_DELAY_MS, prodSaveState);
 const saveStaffDebounced = debounce(saveStaffNow, SAVE_DELAY_MS, staffSaveState);
 const saveAgendaDebounced = debounce(saveAgendaNow, SAVE_DELAY_MS, agendaSaveState);
+const saveVehiclesDebounced = debounce(saveVehiclesNow, SAVE_DELAY_MS, vehiclesSaveState);
 // saveX() (utilisé partout ailleurs dans le code) attend une pause dans la frappe —
 // c'est un filet de sécurité si jamais le champ n'est jamais quitté proprement.
 // saveXFlush() enregistre immédiatement — appelé quand on quitte un champ (blur).
@@ -890,10 +984,12 @@ function saveBoats(){ saveBoatsDebounced(); }
 function saveProd(){ saveProdDebounced(); }
 function saveStaff(){ saveStaffDebounced(); }
 function saveAgenda(){ saveAgendaDebounced(); }
+function saveVehicles(){ saveVehiclesDebounced(); }
 function saveBoatsFlush(){ saveBoatsDebounced.flush(); }
 function saveProdFlush(){ saveProdDebounced.flush(); }
 function saveStaffFlush(){ saveStaffDebounced.flush(); }
 function saveAgendaFlush(){ saveAgendaDebounced.flush(); }
+function saveVehiclesFlush(){ saveVehiclesDebounced.flush(); }
 // Enregistre immédiatement dès qu'on quitte un champ texte/date/liste déroulante,
 // plutôt que d'attendre le délai — posé une seule fois par écran plutôt que sur
 // chaque champ individuellement (le blur ne remonte pas tout seul, d'où "true" à
@@ -948,10 +1044,16 @@ function syncHeaderUI(){
       '<button class="subtab '+(hivSubTab==='clients'?'active':'')+'" data-sub="clients">Clients</button>'+
       '<button class="subtab '+(hivSubTab==='planning'?'active':'')+'" data-sub="planning">Planning hivernage</button>';
     subbar.querySelectorAll('.subtab').forEach(function(t){ t.addEventListener('click', function(){ hivSubTab=t.dataset.sub; syncHeaderUI(); renderAll(); }); });
+  } else if(activeModule==='personnel'){
+    subbar.style.display='flex';
+    subbar.innerHTML =
+      '<button class="subtab '+(personnelSubTab==='employes'?'active':'')+'" data-sub="employes">Employés</button>'+
+      '<button class="subtab '+(personnelSubTab==='vehicules'?'active':'')+'" data-sub="vehicules">Véhicules</button>';
+    subbar.querySelectorAll('.subtab').forEach(function(t){ t.addEventListener('click', function(){ personnelSubTab=t.dataset.sub; currentVehicleId=null; syncHeaderUI(); renderAll(); }); });
   } else {
     subbar.style.display='none';
   }
-  const showSidebar = (activeModule==='hivernage' && hivSubTab==='clients') || activeModule==='prod' || activeModule==='personnel';
+  const showSidebar = (activeModule==='hivernage' && hivSubTab==='clients') || activeModule==='prod' || (activeModule==='personnel' && personnelSubTab==='employes');
   document.getElementById('sidebar').style.display = showSidebar ? 'flex' : 'none';
   document.getElementById('newItemBtn').style.display = (activeModule==='planning' || activeModule==='accueil' || activeModule==='clientsIndex' || (activeModule==='hivernage'&&hivSubTab==='planning')) ? 'none' : 'inline-block';
 }
@@ -963,6 +1065,9 @@ document.getElementById('newItemBtn').addEventListener('click', function(){
   } else if(activeModule==='prod'){
     const np = emptyProd(); np.dossierNumber = 'P-' + (prodJobs.length+1).toString().padStart(3,'0');
     prodJobs.push(np); currentProdId=np.id; currentTab='edit'; saveProdNow();
+  } else if(activeModule==='personnel' && personnelSubTab==='vehicules'){
+    const nv = emptyVehicle();
+    vehicles.push(nv); currentVehicleId=nv.id; saveVehiclesNow();
   } else if(activeModule==='personnel'){
     const ns = emptyStaff();
     staff.push(ns); currentStaffId=ns.id; saveStaffNow();
@@ -1032,7 +1137,7 @@ function renderMain(){
   } else if(activeModule==='prod'){
     renderProdMain();
   } else if(activeModule==='personnel'){
-    renderStaffMain();
+    if(personnelSubTab==='vehicules') renderVehicleMain(); else renderStaffMain();
   } else if(activeModule==='clientsIndex'){
     renderClientMain();
   } else {
@@ -1369,7 +1474,7 @@ function renderBoatEdit(b){
     const list=btn.dataset.add;
     if(list==='requests') b.requests.push({id:uid('req'),text:'',done:false,dueDate:'',assignedTo:''});
     if(list==='inventory') b.inventory.push({name:'',location:'',checked:false});
-    if(list==='techNotes') b.techNotes.push({constat:'',action:'',date:'',done:false,dueDate:'',assignedTo:''});
+    if(list==='techNotes') b.techNotes.push({id:uid('tn'),constat:'',action:'',date:'',done:false,dueDate:'',assignedTo:''});
     saveBoats(); renderBoatEdit(b);
   }); });
   area.querySelectorAll('[data-rm]').forEach(function(btn){ btn.addEventListener('click', function(){
@@ -1631,7 +1736,7 @@ function renderProdEdit(p){
   area.querySelectorAll('[data-add]').forEach(function(btn){ btn.addEventListener('click', function(){
     const list=btn.dataset.add;
     if(list==='options') p.options.push('');
-    if(list==='tasks') p.tasks.push({task:'',done:false,dueDate:'',assignedTo:''});
+    if(list==='tasks') p.tasks.push({id:uid('pt'),task:'',done:false,dueDate:'',assignedTo:''});
     if(list==='materials') p.materials.push({name:'',status:'manquant',note:''});
     saveProd(); renderProdEdit(p);
   }); });
@@ -1703,7 +1808,18 @@ function renderStaffMain(){
     '</div>'+
     '<div class="card"><h3>Congés / absences</h3><div class="row-list" id="leavesList">'+
       s.leaves.map(function(lv,idx){return '<div class="row-item"><input type="date" data-leave="startDate" data-idx="'+idx+'" value="'+(lv.startDate||'')+'" style="flex:1;"><input type="date" data-leave="endDate" data-idx="'+idx+'" value="'+(lv.endDate||'')+'" style="flex:1;"><input type="text" data-leave="reason" data-idx="'+idx+'" value="'+esc(lv.reason)+'" placeholder="Motif (optionnel)" style="flex:2;"><button class="rm" data-leave-rm="'+idx+'">✕</button></div>';}).join('')+
-    '</div><button class="add-row" id="addLeave">+ Ajouter une période de congé</button></div>';
+    '</div><button class="add-row" id="addLeave">+ Ajouter une période de congé</button></div>'+
+    '<div class="card"><h3>Journal quotidien</h3>'+
+      '<div class="section-intro">Envoyé par l\'employé lui-même depuis la plateforme de pointage — lecture seule ici.</div>'+
+      (function(){
+        const logs = dailyLogs.filter(function(l){ return l.staffEmail && s.email && l.staffEmail.toLowerCase()===s.email.toLowerCase(); })
+          .sort(function(a,c){ return (c.date||'').localeCompare(a.date||''); });
+        if(!logs.length) return '<div class="placeholder-italic">Aucune entrée pour le moment'+(s.email?'':' (renseigne son email ci-dessus pour relier son compte de pointage)')+'</div>';
+        return '<table class="fiche-table"><tr><th style="width:110px;">Date</th><th style="width:120px;">Horaires</th><th style="width:130px;">Véhicule</th><th>Tâches faites</th></tr>'+
+          logs.map(function(l){ return '<tr><td>'+(fmtDate(l.date)||'—')+'</td><td>'+(esc(l.hourStart)||'—')+(l.hourEnd?' – '+esc(l.hourEnd):'')+'</td><td>'+(esc(l.vehicle)||'—')+'</td><td>'+(esc((l.tasksSummary||(l.tasksCompleted||[]).join(', ')))||'—')+(l.notes?'<div class="section-intro" style="margin:2px 0 0;">'+esc(l.notes)+'</div>':'')+'</td></tr>'; }).join('')+
+        '</table>';
+      })()+
+    '</div>';
 
   area.querySelectorAll('[data-sf]').forEach(function(inp){ inp.addEventListener('input', function(){ s[inp.dataset.sf]=inp.value; saveStaff(); renderList(); }); });
   area.querySelectorAll('[data-leave]').forEach(function(inp){ inp.addEventListener('input', function(){
@@ -1717,6 +1833,29 @@ function renderStaffMain(){
     saveStaff(); renderStaffMain();
   });
   attachSaveOnBlur(area, saveStaffFlush);
+}
+
+function renderVehicleMain(){
+  const main = document.getElementById('main');
+  main.innerHTML =
+    '<div class="card"><h3>Véhicules de société</h3>'+
+      '<div class="section-intro">Cette liste est celle que les employés voient sur la plateforme de pointage pour indiquer le véhicule pris.</div>'+
+      '<div class="row-list" id="vehiclesList">'+
+        vehicles.map(function(v,idx){return '<div class="row-item"><input type="text" data-vf="name" data-idx="'+idx+'" value="'+esc(v.name)+'" placeholder="Ex : Camionnette 1" style="flex:2;"><input type="text" data-vf="plate" data-idx="'+idx+'" value="'+esc(v.plate)+'" placeholder="Immatriculation (optionnel)" style="flex:1;"><input type="text" data-vf="notes" data-idx="'+idx+'" value="'+esc(v.notes)+'" placeholder="Remarque (optionnel)" style="flex:2;"><button class="rm" data-vrm="'+idx+'">✕</button></div>';}).join('')+
+      '</div><button class="add-row" id="addVehicle">+ Ajouter un véhicule</button>'+
+    '</div>';
+  main.querySelectorAll('[data-vf]').forEach(function(inp){ inp.addEventListener('input', function(){
+    vehicles[+inp.dataset.idx][inp.dataset.vf] = inp.value; saveVehicles();
+  }); });
+  main.querySelectorAll('[data-vrm]').forEach(function(btn){ btn.addEventListener('click', function(){
+    const removed = vehicles.splice(+btn.dataset.vrm, 1)[0];
+    if(removed) deleteDoc('vehicles', removed.id);
+    saveVehiclesNow(); renderVehicleMain();
+  }); });
+  document.getElementById('addVehicle').addEventListener('click', function(){
+    vehicles.push(emptyVehicle()); saveVehiclesNow(); renderVehicleMain();
+  });
+  attachSaveOnBlur(main, saveVehiclesFlush);
 }
 
 let clientSearchQuery = '';
