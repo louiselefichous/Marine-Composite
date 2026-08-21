@@ -853,9 +853,28 @@ function loadAll(){
 
   db.collection('clientEmails').onSnapshot({ includeMetadataChanges: true }, function(snap){
     if(snap.metadata.hasPendingWrites) return;
-    clientEmails = snap.docs.map(function(d){ return d.data(); });
+    clientEmails = snap.docs.map(function(d){ const data = d.data(); data._docId = d.id; return data; });
+    dedupeClientEmails();
     renderAll();
   }, function(err){ console.error('[Firestore] Erreur listener "clientEmails" :', err); showSyncError('emails clients', err); });
+}
+
+// Nettoie les doublons créés avant la correction du bouton "Enregistrer" de l'add-in
+// Outlook (qui créait un nouvel enregistrement à chaque clic) : ne garde que le plus
+// récent par client + sujet + expéditeur + date.
+function dedupeClientEmails(){
+  const groups = {};
+  clientEmails.forEach(function(e){
+    if(!e.clientKey || !e.subject) return;
+    const key = e.clientKey+'|'+e.subject+'|'+(e.fromEmail||'')+'|'+(e.date||'').slice(0,10);
+    (groups[key] = groups[key]||[]).push(e);
+  });
+  Object.keys(groups).forEach(function(key){
+    const list = groups[key];
+    if(list.length<=1) return;
+    list.sort(function(a,c){ return (c.savedAt||'').localeCompare(a.savedAt||''); });
+    for(let i=1;i<list.length;i++){ deleteDoc('clientEmails', list[i]._docId); }
+  });
 }
 
 // Nettoie les doublons laissés par d'anciens envois (avant que chaque résumé soit
