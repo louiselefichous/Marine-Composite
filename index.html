@@ -90,6 +90,21 @@
   .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;gap:12px;}
   /* Grille de cartes clients (onglet Clients) */
   .client-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  /* Grille hebdomadaire (Emploi du temps — Personnel) — positionnement absolu, pour
+     que deux créneaux au même horaire s'affichent côte à côte plutôt que superposés. */
+  .week-cal2{border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden;background:#fff;}
+  .week-cal2-header{display:flex;}
+  .week-cal2-corner{width:52px;flex-shrink:0;background:#EDEEF1;border-bottom:1px solid var(--line);border-right:1px solid #EEEFF1;}
+  .week-cal2-headcell{flex:1;background:#EDEEF1;color:var(--text);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;text-align:center;padding:8px 4px;border-bottom:1px solid var(--line);border-right:1px solid #EEEFF1;}
+  .week-cal2-headcell.today{background:var(--accent);color:#fff;}
+  .week-cal2-body{display:flex;}
+  .week-cal2-gutter{width:52px;flex-shrink:0;position:relative;background:#FAFAFB;border-right:1px solid var(--line);}
+  .week-cal2-hour{position:absolute;left:0;right:6px;text-align:right;font-size:10px;color:var(--muted);}
+  .week-cal2-day{flex:1;position:relative;border-right:1px solid #EEEFF1;}
+  .week-cal2-block{position:absolute;border-radius:5px;padding:3px 5px;font-size:10px;line-height:1.25;color:#fff;font-weight:700;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.18);}
+  .schedule-legend-item{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--line);border-radius:999px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;background:#fff;transition:opacity .15s var(--ease);}
+  .schedule-legend-item.hidden{opacity:.35;}
+  .schedule-legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
   .client-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-md);padding:26px 20px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:box-shadow .2s var(--ease),transform .2s var(--ease),border-color .2s var(--ease);}
   .client-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px);border-color:var(--accent);}
   .client-card .client-icon{width:52px;height:52px;border-radius:50%;background:#EAF2F1;color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
@@ -621,7 +636,7 @@ function emptyProd(){
   };
 }
 function emptyStaff(){
-  return { id: uid('st'), name:'', role:'', phone:'', email:'', notes:'', leaves: [] };
+  return { id: uid('st'), name:'', role:'', phone:'', email:'', notes:'', color:'', leaves: [] };
 }
 function emptyVehicle(){
   return { id: uid('veh'), name:'', plate:'', notes:'' };
@@ -762,6 +777,7 @@ function migrateStaffMember(s){
   if(!Array.isArray(s.leaves)) s.leaves=[];
   if(s.email===undefined) s.email='';
   if(s.notes===undefined) s.notes='';
+  if(s.color===undefined) s.color='';
   return s;
 }
 
@@ -1848,6 +1864,7 @@ function renderStaffMain(){
         '<div class="field"><label>Poste</label><input type="text" data-sf="role" value="'+esc(s.role)+'" placeholder="Ex : stratifieur, chef d\'atelier..."></div>'+
         '<div class="field"><label>Téléphone</label><input type="tel" data-sf="phone" value="'+esc(s.phone)+'"></div>'+
         '<div class="field"><label>Email</label><input type="email" data-sf="email" value="'+esc(s.email)+'"></div>'+
+        '<div class="field"><label>Couleur (planning, emploi du temps...)</label><div style="display:flex;align-items:center;gap:10px;"><input type="color" data-sf="color" value="'+(s.color||employeeAutoColor(s.name))+'" style="width:44px;height:38px;padding:2px;border:1px solid var(--line);border-radius:7px;cursor:pointer;"><span style="font-size:12px;color:var(--muted);">Utilisée partout où '+esc(s.name||'cet employé')+' apparaît en couleur dans la plateforme</span></div></div>'+
       '</div>'+
       '<div class="field" style="margin-top:12px;"><label>Notes</label><textarea data-sf="notes" style="min-height:70px;">'+esc(s.notes)+'</textarea></div>'+
     '</div>'+
@@ -1907,28 +1924,178 @@ function renderVehicleMain(){
   attachSaveOnBlur(main, saveVehiclesFlush);
 }
 
+// Couleurs harmonisées avec la plateforme, une par employé (déterministe à partir du nom)
+const SCHEDULE_EMPLOYEE_COLORS = ['#2E6F69','#3D6E93','#9A6A1E','#6B4FA0','#B0522E','#4A7A3D'];
+// Couleur automatique (repli) si l'employé n'a pas choisi la sienne sur sa fiche.
+function employeeAutoColor(name){
+  let hash = 0;
+  const s = name||'';
+  for(let i=0;i<s.length;i++){ hash = (hash*31 + s.charCodeAt(i))|0; }
+  return SCHEDULE_EMPLOYEE_COLORS[Math.abs(hash) % SCHEDULE_EMPLOYEE_COLORS.length];
+}
+// Couleur réellement utilisée : celle choisie sur la fiche employé si elle existe,
+// sinon la couleur automatique — utilisée partout dans la plateforme (pas que l'emploi du temps).
+function getEmployeeColor(name){
+  const s = staff.find(function(x){ return x.name===name; });
+  return (s && s.color) ? s.color : employeeAutoColor(name);
+}
+const SCHEDULE_START_HOUR = 6, SCHEDULE_END_HOUR = 20; // plage affichée dans la grille
+const SCHEDULE_SLOT_PX = 18; // hauteur d'un créneau de 30 min, en pixels
+function timeToSlot(t){
+  if(!t) return null;
+  const parts = t.split(':'); const h = +parts[0], m = +(parts[1]||0);
+  if(isNaN(h)) return null;
+  let slot = (h - SCHEDULE_START_HOUR)*2 + (m>=30 ? 1 : 0);
+  const maxSlot = (SCHEDULE_END_HOUR - SCHEDULE_START_HOUR)*2;
+  if(slot<0) slot=0; if(slot>maxSlot) slot=maxSlot;
+  return slot;
+}
+function mondayOf(d){
+  const dt = new Date(d); const day = dt.getDay();
+  dt.setDate(dt.getDate() + (day===0 ? -6 : 1-day));
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+let scheduleWeekCursor = mondayOf(new Date());
+let scheduleHiddenEmployees = {}; // {nom: true} = masqué via la légende
+
+// Répartit les créneaux qui se chevauchent en colonnes côte à côte (comme un vrai
+// calendrier) plutôt que de les empiler les uns sur les autres. Algorithme classique
+// de "lanes" : on regroupe les créneaux qui se recouvrent, puis on attribue à chacun
+// la première colonne libre dans son groupe.
+function assignLanes(items){
+  const sorted = items.slice().sort(function(a,c){ return a.startSlot-c.startSlot || a.endSlot-c.endSlot; });
+  let cluster = [], clusterEnd = -1;
+  const clusters = [];
+  sorted.forEach(function(it){
+    if(cluster.length && it.startSlot >= clusterEnd){ clusters.push(cluster); cluster = []; clusterEnd = -1; }
+    cluster.push(it); clusterEnd = Math.max(clusterEnd, it.endSlot);
+  });
+  if(cluster.length) clusters.push(cluster);
+  clusters.forEach(function(cl){
+    const laneEnds = [];
+    cl.forEach(function(it){
+      let lane = laneEnds.findIndex(function(end){ return end<=it.startSlot; });
+      if(lane===-1){ lane = laneEnds.length; laneEnds.push(it.endSlot); }
+      else { laneEnds[lane] = it.endSlot; }
+      it.lane = lane;
+    });
+    cl.forEach(function(it){ it.laneCount = laneEnds.length; });
+  });
+  return sorted;
+}
+
+// Construit une grille hebdomadaire (lundi→dimanche) en positionnement absolu, pour
+// que deux employés au même horaire s'affichent côte à côte plutôt que superposés.
+// mode 'horaires' affiche les heures travaillées, mode 'vehicules' le véhicule pris.
+function renderWeekGrid(mode, weekStart, logs){
+  const dayNames = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const totalSlots = (SCHEDULE_END_HOUR - SCHEDULE_START_HOUR)*2;
+  const dayHeightPx = totalSlots*SCHEDULE_SLOT_PX;
+  const days = [];
+  for(let i=0;i<7;i++){ const d = new Date(weekStart); d.setDate(d.getDate()+i); days.push(d); }
+
+  let hourLabels = '';
+  for(let h=SCHEDULE_START_HOUR; h<=SCHEDULE_END_HOUR; h++){
+    hourLabels += '<div class="week-cal2-hour" style="top:'+((h-SCHEDULE_START_HOUR)*2*SCHEDULE_SLOT_PX-6)+'px;">'+h+'h</div>';
+  }
+
+  let html = '<div class="week-cal2">';
+  html += '<div class="week-cal2-header"><div class="week-cal2-corner"></div>';
+  days.forEach(function(d){
+    const iso = isoDate(d);
+    const isToday = iso === todayISO();
+    html += '<div class="week-cal2-headcell'+(isToday?' today':'')+'">'+dayNames[d.getDay()===0?6:d.getDay()-1]+' '+d.getDate()+'</div>';
+  });
+  html += '</div>';
+  html += '<div class="week-cal2-body">';
+  html += '<div class="week-cal2-gutter" style="height:'+dayHeightPx+'px;">'+hourLabels+'</div>';
+  days.forEach(function(d){
+    const iso = isoDate(d);
+    let dayLogs = logs.filter(function(l){ return l.date===iso && !scheduleHiddenEmployees[l.staffName]; });
+    if(mode==='vehicules') dayLogs = dayLogs.filter(function(l){ return l.vehicle; });
+    const items = dayLogs.map(function(l){
+      const startSlot = timeToSlot(l.hourStart);
+      const endSlot0 = timeToSlot(l.hourEnd);
+      const endSlot = (endSlot0!==null && endSlot0>startSlot) ? endSlot0 : startSlot+1;
+      return { log:l, startSlot: startSlot===null?0:startSlot, endSlot: endSlot };
+    }).filter(function(it){ return it.startSlot!==null; });
+    const placed = assignLanes(items);
+    html += '<div class="week-cal2-day" style="height:'+dayHeightPx+'px;">';
+    placed.forEach(function(it){
+      const l = it.log;
+      const top = it.startSlot*SCHEDULE_SLOT_PX;
+      const height = Math.max((it.endSlot-it.startSlot)*SCHEDULE_SLOT_PX, 16);
+      const widthPct = 100/it.laneCount;
+      const leftPct = it.lane*widthPct;
+      const color = getEmployeeColor(l.staffName);
+      const label = mode==='horaires' ? esc(l.staffName)+'<br>'+esc(l.hourStart)+(l.hourEnd?'–'+esc(l.hourEnd):'') : esc(l.staffName)+'<br>'+(esc(l.vehicle)||'—');
+      html += '<div class="week-cal2-block" title="'+esc(l.staffName)+'" style="top:'+top+'px;height:'+height+'px;left:calc('+leftPct+'% + 1px);width:calc('+widthPct+'% - 2px);background:'+color+';">'+label+'</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
 let scheduleSearchQuery = '';
 function renderScheduleMain(){
   const main = document.getElementById('main');
   const q = scheduleSearchQuery.toLowerCase();
-  const logs = dailyLogs
-    .filter(function(l){ return (l.staffName||'').toLowerCase().indexOf(q)>-1; })
-    .sort(function(a,c){ return (c.date||'').localeCompare(a.date||'') || (a.staffName||'').localeCompare(c.staffName||''); });
+  const weekStart = scheduleWeekCursor;
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate()+6);
+  const weekLabel = weekStart.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' — '+weekEnd.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
+  const logs = dailyLogs.filter(function(l){ return (l.staffName||'').toLowerCase().indexOf(q)>-1; });
+  const weekLogs = logs.filter(function(l){ return l.date >= isoDate(weekStart) && l.date <= isoDate(weekEnd); })
+    .sort(function(a,c){ return (a.date||'').localeCompare(c.date||''); });
+  // Légende : tous les employés apparaissant cette semaine, avec leur couleur —
+  // cliquer dessus les masque/réaffiche sur les deux grilles.
+  const namesThisWeek = Array.from(new Set(weekLogs.map(function(l){ return l.staffName; }).filter(Boolean))).sort();
+
   main.innerHTML =
     '<div class="card">'+
       '<h3>Emploi du temps — équipe</h3>'+
-      '<div class="section-intro">Rempli automatiquement par chaque employé depuis la plateforme de pointage (horaires, véhicule pris, missions accomplies). Lecture seule ici.</div>'+
-      '<div class="field" style="max-width:300px;margin-bottom:16px;"><input type="text" id="scheduleSearch" placeholder="Filtrer par employé..." value="'+esc(scheduleSearchQuery)+'"></div>'+
-      (logs.length ? '<table class="fiche-table"><tr><th style="width:100px;">Date</th><th style="width:140px;">Employé</th><th style="width:120px;">Horaires</th><th style="width:130px;">Véhicule</th><th>Missions accomplies</th></tr>'+
-        logs.map(function(l){ return '<tr><td>'+(fmtDate(l.date)||'—')+'</td><td>'+esc(l.staffName||'—')+'</td><td>'+(esc(l.hourStart)||'—')+(l.hourEnd?' – '+esc(l.hourEnd):'')+'</td><td>'+(esc(l.vehicle)||'—')+'</td><td>'+(esc(l.tasksSummary)||'—')+(l.notes?'<div class="section-intro" style="margin:2px 0 0;">'+esc(l.notes)+'</div>':'')+'</td></tr>'; }).join('')+
-      '</table>' : '<div class="placeholder-italic">Aucune entrée pour le moment — les employés doivent d\'abord se connecter à la plateforme de pointage et envoyer un résumé.</div>')+
+      '<div class="section-intro">Rempli automatiquement par chaque employé depuis la plateforme de pointage. Lecture seule ici.</div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'+
+        '<button class="btn btn-outline btn-small" id="prevWeekBtn">◀ Semaine préc.</button>'+
+        '<div style="font-weight:800;color:var(--navy);font-size:14px;min-width:190px;text-align:center;">'+weekLabel+'</div>'+
+        '<button class="btn btn-outline btn-small" id="nextWeekBtn">Semaine suiv. ▶</button>'+
+        '<button class="btn btn-outline btn-small" id="todayWeekBtn">Cette semaine</button>'+
+        '<input type="text" id="scheduleSearch" placeholder="Filtrer par employé..." value="'+esc(scheduleSearchQuery)+'" style="margin-left:auto;max-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;">'+
+      '</div>'+
+      (namesThisWeek.length ? '<div style="display:flex;flex-wrap:wrap;gap:8px;">'+
+        namesThisWeek.map(function(name){
+          const hidden = !!scheduleHiddenEmployees[name];
+          return '<div class="schedule-legend-item'+(hidden?' hidden':'')+'" data-legend-name="'+esc(name)+'" style="border-color:'+getEmployeeColor(name)+';">'+
+            '<span class="schedule-legend-dot" style="background:'+getEmployeeColor(name)+';"></span>'+esc(name)+'</div>';
+        }).join('')+
+      '</div>' : '')+
+    '</div>'+
+    '<div class="card"><h3>Horaires</h3>'+renderWeekGrid('horaires', weekStart, weekLogs)+'</div>'+
+    '<div class="card"><h3>Véhicules</h3>'+renderWeekGrid('vehicules', weekStart, weekLogs)+'</div>'+
+    '<div class="card"><h3>Missions de la semaine</h3>'+
+      (weekLogs.length ? '<table class="fiche-table"><tr><th style="width:100px;">Date</th><th style="width:140px;">Employé</th><th>Missions accomplies</th></tr>'+
+        weekLogs.filter(function(l){ return l.tasksSummary || l.notes; }).map(function(l){ return '<tr><td>'+(fmtDate(l.date)||'—')+'</td><td>'+esc(l.staffName||'—')+'</td><td>'+(esc(l.tasksSummary)||'—')+(l.notes?'<div class="section-intro" style="margin:2px 0 0;">'+esc(l.notes)+'</div>':'')+'</td></tr>'; }).join('')+
+      '</table>' : '<div class="placeholder-italic">Aucune mission renseignée cette semaine</div>')+
     '</div>';
+
+  document.getElementById('prevWeekBtn').addEventListener('click', function(){ scheduleWeekCursor = addDays(scheduleWeekCursor,-7); renderScheduleMain(); });
+  document.getElementById('nextWeekBtn').addEventListener('click', function(){ scheduleWeekCursor = addDays(scheduleWeekCursor,7); renderScheduleMain(); });
+  document.getElementById('todayWeekBtn').addEventListener('click', function(){ scheduleWeekCursor = mondayOf(new Date()); renderScheduleMain(); });
   const search = document.getElementById('scheduleSearch');
   search.addEventListener('input', function(){
     scheduleSearchQuery = search.value; renderScheduleMain();
     const el = document.getElementById('scheduleSearch'); el.focus(); el.setSelectionRange(scheduleSearchQuery.length, scheduleSearchQuery.length);
   });
+  main.querySelectorAll('[data-legend-name]').forEach(function(el){ el.addEventListener('click', function(){
+    const name = el.dataset.legendName;
+    scheduleHiddenEmployees[name] = !scheduleHiddenEmployees[name];
+    renderScheduleMain();
+  }); });
 }
+function isoDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function addDays(d,n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function todayISO(){ return isoDate(new Date()); }
 
 let clientSearchQuery = '';
 
