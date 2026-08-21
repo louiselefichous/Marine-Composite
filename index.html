@@ -59,7 +59,7 @@
   .module-btn{border:none;background:none;color:var(--on-navy-muted);padding:7px 15px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s var(--ease),color .15s var(--ease);}
   .module-btn:hover{color:var(--on-navy);}
   .module-btn.active{background:var(--card);color:var(--navy);box-shadow:var(--shadow-sm);}
-  .subbar{background:var(--navy);padding:8px 28px;display:flex;gap:4px;overflow-x:auto;}
+  .subbar{background:var(--navy-dark);padding:8px 28px;display:flex;gap:4px;overflow-x:auto;}
   .subtab{border:none;background:none;color:var(--on-navy-muted);padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s var(--ease),color .15s var(--ease);}
   .subtab:hover{color:var(--on-navy);background:rgba(255,255,255,.09);}
   .subtab.active{background:rgba(255,255,255,.14);color:var(--on-navy);}
@@ -786,6 +786,7 @@ let agendaNotes = []; // [{date:'YYYY-MM-DD', text:''}] — agenda central parta
 let tasksMirror = []; // miroir public des travaux (Hivernage + Prod), lu par la plateforme 2 (employés)
 let vehicles = []; // parc de véhicules de société, choisi par les employés sur la plateforme 2
 let dailyLogs = []; // journaux quotidiens envoyés par les employés depuis la plateforme 2 (lecture seule ici)
+let clientEmails = []; // emails Outlook enregistrés via l'add-in, sur la fiche client (lecture seule ici)
 
 function loadAll(){
   // { includeMetadataChanges: true } nous permet de distinguer l'écho de notre
@@ -849,6 +850,12 @@ function loadAll(){
     dedupeDailyLogs();
     renderAll();
   }, function(err){ console.error('[Firestore] Erreur listener "dailyLogs" :', err); showSyncError('journal quotidien', err); });
+
+  db.collection('clientEmails').onSnapshot({ includeMetadataChanges: true }, function(snap){
+    if(snap.metadata.hasPendingWrites) return;
+    clientEmails = snap.docs.map(function(d){ return d.data(); });
+    renderAll();
+  }, function(err){ console.error('[Firestore] Erreur listener "clientEmails" :', err); showSyncError('emails clients', err); });
 }
 
 // Nettoie les doublons laissés par d'anciens envois (avant que chaque résumé soit
@@ -1957,7 +1964,18 @@ function renderClientDetail(){
       (c.prodJobs.length ? '<table class="fiche-table"><tr><th>Dossier</th><th>Type</th><th style="width:120px;">Statut</th><th></th></tr>'+
         c.prodJobs.map(function(p){ return '<tr><td>'+esc(p.title||'Sans nom')+'</td><td><span class="type-tag">'+(p.type==='chantier'?'Chantier':'Fabrication')+'</span></td><td>'+statusBadge(p.status)+'</td><td><button class="btn btn-outline btn-small" data-open-mod="prod" data-open-id="'+p.id+'">Ouvrir</button></td></tr>'; }).join('')+
       '</table>' : '<div class="placeholder-italic">Aucun dossier pour ce client</div>')+
-    '</div>';
+    '</div>'+
+    (function(){
+      const emails = clientEmails.filter(function(e){ return e.clientKey===c.key; }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+      return '<div class="card"><h3>Emails Outlook <span class="status-tag '+(emails.length?'status-ok':'status-pending')+'">'+emails.length+'</span></h3>'+
+        '<div class="section-intro">Enregistrés depuis Outlook via l\'add-in "Enregistrer sur fiche client".</div>'+
+        (emails.length ? emails.map(function(e){ return '<div style="border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:8px;">'+
+            '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><b style="color:var(--navy);">'+esc(e.subject||'(sans objet)')+'</b><span style="font-size:11.5px;color:var(--muted);">'+(fmtDate((e.date||'').slice(0,10))||'')+'</span></div>'+
+            '<div style="font-size:12px;color:var(--muted);margin:3px 0 8px;">De : '+esc(e.fromName||'')+(e.fromEmail?' <'+esc(e.fromEmail)+'>':'')+'</div>'+
+            '<div style="font-size:13px;white-space:pre-wrap;">'+esc(e.bodyPreview||'')+'</div>'+
+          '</div>'; }).join('') : '<div class="placeholder-italic">Aucun email enregistré pour ce client</div>')+
+      '</div>';
+    })();
   area.querySelectorAll('[data-open-mod]').forEach(function(btn){ btn.addEventListener('click', function(){
     openFromEvent(btn.dataset.openMod, btn.dataset.openId);
   }); });
